@@ -119,9 +119,18 @@ class ReplayBuffer:
         self.buffer = deque(maxlen=capacity)
 
     def push(self, state: np.ndarray, action: int, reward: float,
-             next_state: np.ndarray, done: bool):
-        """Store a transition in the buffer."""
-        self.buffer.append((state, action, reward, next_state, done))
+             next_state: np.ndarray, done: bool, current_player: int = 1):
+        """Store a transition in the buffer.
+
+        Args:
+            state: Board state when action was taken
+            action: Column chosen
+            reward: Reward received
+            next_state: Resulting board state
+            done: Whether game ended
+            current_player: Player who made this move (1 or 2)
+        """
+        self.buffer.append((state, action, reward, next_state, done, current_player))
 
     def sample(self, batch_size: int) -> List[Tuple]:
         """Sample a random batch of transitions."""
@@ -311,9 +320,18 @@ class DQNAgent:
             return best_action
 
     def store_transition(self, state: np.ndarray, action: int, reward: float,
-                         next_state: np.ndarray, done: bool):
-        """Store a transition in the replay buffer."""
-        self.replay_buffer.push(state, action, reward, next_state, done)
+                         next_state: np.ndarray, done: bool, current_player: int = 1):
+        """Store a transition in the replay buffer.
+
+        Args:
+            state: Board state when action was taken
+            action: Column chosen
+            reward: Reward received
+            next_state: Resulting board state
+            done: Whether game ended
+            current_player: Player who made this move (1 or 2)
+        """
+        self.replay_buffer.push(state, action, reward, next_state, done, current_player)
 
     def train_step(self) -> Optional[float]:
         """
@@ -325,15 +343,22 @@ class DQNAgent:
         if len(self.replay_buffer) < self.batch_size:
             return None
 
-        # Sample batch
+        # Sample batch - now includes current_player
         batch = self.replay_buffer.sample(self.batch_size)
-        states, actions, rewards, next_states, dones = zip(*batch)
+        states, actions, rewards, next_states, dones, current_players = zip(*batch)
 
-        # Convert to tensors
-        state_batch = self._preprocess_batch(list(states))
+        # Convert current_players to list for preprocessing
+        current_players_list = list(current_players)
+
+        # For next_state, the perspective switches to the opponent
+        # (after player X moves, player Y will be choosing the next action)
+        next_players_list = [2 if p == 1 else 1 for p in current_players_list]
+
+        # Convert to tensors with correct player perspectives
+        state_batch = self._preprocess_batch(list(states), current_players_list)
         action_batch = torch.LongTensor(actions).to(self.device)
         reward_batch = torch.FloatTensor(rewards).to(self.device)
-        next_state_batch = self._preprocess_batch(list(next_states))
+        next_state_batch = self._preprocess_batch(list(next_states), next_players_list)
         done_batch = torch.BoolTensor(dones).to(self.device)
 
         # Compute current Q-values: Q(s, a)
@@ -478,7 +503,8 @@ if __name__ == "__main__":
         reward = random.choice([-1.0, 0.0, 1.0])
         next_state = np.random.randint(0, 3, (6, 7), dtype=np.int8)
         done = random.random() < 0.1
-        agent.store_transition(state, action, reward, next_state, done)
+        current_player = random.choice([1, 2])
+        agent.store_transition(state, action, reward, next_state, done, current_player)
 
     print(f"Buffer size after adding transitions: {len(agent.replay_buffer)}")
 

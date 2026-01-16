@@ -52,8 +52,8 @@ def train_self_play(
             legal_actions = game.get_legal_actions()
             current_player = game.current_player
 
-            # Choose action
-            action = agent.choose_action(state, legal_actions, training=True)
+            # Choose action (pass current_player for correct state preprocessing)
+            action = agent.choose_action(state, legal_actions, training=True, current_player=current_player)
 
             # Make move
             next_state, reward, done = game.make_move(action)
@@ -86,13 +86,14 @@ def train_self_play(
             else:
                 reward = -1.0
 
-            # Store in replay buffer
+            # Store in replay buffer (include player for correct perspective during training)
             agent.store_transition(
                 transition['state'],
                 transition['action'],
                 reward,
                 transition['next_state'],
-                transition['done']
+                transition['done'],
+                transition['player']
             )
 
             # Train

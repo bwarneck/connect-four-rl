@@ -45,7 +45,8 @@ def evaluate_agent(
             legal_actions = game.get_legal_actions()
 
             if (game.current_player == ConnectFour.PLAYER_1) == agent_is_p1:
-                action = agent.choose_action(state, legal_actions, training=False)
+                action = agent.choose_action(state, legal_actions, training=False,
+                                             current_player=game.current_player)
             else:
                 action = opp_agent.choose_action(state, legal_actions)
 

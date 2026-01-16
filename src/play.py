@@ -66,7 +66,8 @@ def play_game(agent: DQNAgent, human_first: bool = True):
             # Agent's turn
             state = game.get_state()
             legal_actions = game.get_legal_actions()
-            action = agent.choose_action(state, legal_actions, training=False)
+            action = agent.choose_action(state, legal_actions, training=False,
+                                         current_player=game.current_player)
             print(f"\nAgent plays column: {action}")
 
         game.make_move(action)
