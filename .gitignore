@@ -15,6 +15,7 @@ venv/
 # IDE
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 
@@ -27,3 +28,6 @@ trained_agent.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Generated outputs
+training_progress.png

@@ -33,6 +33,11 @@ python src/evaluate.py
 jupyter notebook notebooks/visualization.ipynb
 ```
 
+**Run tests** (reward shaping unit tests):
+```bash
+python -m pytest tests/test_reward_shaping.py -v
+```
+
 ## Architecture
 
 ### Neural Network (`ConnectFourDQN` in src/agent.py)
@@ -53,8 +58,26 @@ jupyter notebook notebooks/visualization.ipynb
 
 ### Training Loop (src/train.py)
 - Self-play: agent plays both sides
-- Reward: +1.0 win, -1.0 loss, 0.0 draw (assigned post-game)
+- Terminal reward: +1.0 win, -1.0 loss, 0.0 draw (assigned post-game)
+- Shaped rewards: intermediate rewards for threats and positioning (see below)
 - Default: 50,000 episodes, batch size 64, learning rate 0.001, γ=0.99
+
+### Reward Shaping (src/game.py)
+The agent receives intermediate rewards to accelerate learning:
+
+| Reward Type | Value | Description |
+|-------------|-------|-------------|
+| Create immediate threat | +0.08 | 3-in-row with playable completion cell |
+| Block opponent threat | +0.06 | Prevents opponent's immediate win |
+| Create future threat | +0.04 | 3-in-row with non-playable completion cell |
+| Block future threat | +0.03 | Prevents opponent's future pressure |
+| Create 2-in-row setup | +0.02 | 2 pieces with 2 empty in a window |
+| Center column play | +0.01 | Strategic advantage |
+
+Helper methods in `ConnectFour`:
+- `is_playable(row, col)`: Check if empty cell can receive piece immediately
+- `find_threats(player)`: Find all threat patterns (3-in-row, 2-in-row setups)
+- `compute_shaped_reward(player, action, prev_board)`: Calculate shaped reward for move
 
 ## Key Hyperparameters
 

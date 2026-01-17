@@ -117,6 +117,154 @@ class ConnectFour:
 
         return count
 
+    def is_playable(self, row: int, col: int) -> bool:
+        """
+        Check if an empty cell can receive a piece immediately.
+
+        A cell is playable if it's empty and either:
+        - It's on the bottom row, or
+        - There's a piece directly below it
+        """
+        if row < 0 or row >= self.ROWS or col < 0 or col >= self.COLS:
+            return False
+        if self.board[row, col] != self.EMPTY:
+            return False
+        if row == self.ROWS - 1:  # Bottom row
+            return True
+        return self.board[row + 1, col] != self.EMPTY  # Has piece below
+
+    def _get_window_contents(self, start_row: int, start_col: int, dr: int, dc: int) -> List[Tuple[int, int, int]]:
+        """
+        Get contents of a 4-cell window starting at (start_row, start_col) in direction (dr, dc).
+
+        Returns:
+            List of (row, col, cell_value) tuples for the 4 cells, or empty list if window is invalid.
+        """
+        contents = []
+        for i in range(4):
+            r = start_row + i * dr
+            c = start_col + i * dc
+            if 0 <= r < self.ROWS and 0 <= c < self.COLS:
+                contents.append((r, c, self.board[r, c]))
+            else:
+                return []  # Window extends outside board
+        return contents
+
+    def find_threats(self, player: int) -> dict:
+        """
+        Find all threat patterns for a player.
+
+        Returns:
+            Dictionary with:
+            - 'three_playable': List of (row, col) positions that would complete an immediate win
+            - 'three_future': List of (row, col) positions for 3-in-row with non-playable empty
+            - 'two_setups': Count of 2-in-row setups with 2 empty spaces
+        """
+        threats = {
+            'three_playable': [],
+            'three_future': [],
+            'two_setups': 0
+        }
+
+        opponent = self.PLAYER_2 if player == self.PLAYER_1 else self.PLAYER_1
+
+        # Directions: horizontal, vertical, diagonal down-right, diagonal down-left
+        directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
+
+        seen_three_playable = set()
+        seen_three_future = set()
+
+        for row in range(self.ROWS):
+            for col in range(self.COLS):
+                for dr, dc in directions:
+                    window = self._get_window_contents(row, col, dr, dc)
+                    if not window:
+                        continue
+
+                    # Count pieces in window
+                    player_count = sum(1 for _, _, val in window if val == player)
+                    opponent_count = sum(1 for _, _, val in window if val == opponent)
+                    empty_cells = [(r, c) for r, c, val in window if val == self.EMPTY]
+
+                    # Skip if opponent has pieces (no threat possible)
+                    if opponent_count > 0:
+                        continue
+
+                    # 3-in-a-row with 1 empty
+                    if player_count == 3 and len(empty_cells) == 1:
+                        empty_r, empty_c = empty_cells[0]
+                        if self.is_playable(empty_r, empty_c):
+                            if (empty_r, empty_c) not in seen_three_playable:
+                                threats['three_playable'].append((empty_r, empty_c))
+                                seen_three_playable.add((empty_r, empty_c))
+                        else:
+                            if (empty_r, empty_c) not in seen_three_future:
+                                threats['three_future'].append((empty_r, empty_c))
+                                seen_three_future.add((empty_r, empty_c))
+
+                    # 2-in-a-row with 2 empty
+                    elif player_count == 2 and len(empty_cells) == 2:
+                        threats['two_setups'] += 1
+
+        return threats
+
+    def compute_shaped_reward(self, player: int, action: int, prev_board: np.ndarray) -> float:
+        """
+        Compute shaped reward for a move based on threats and positioning.
+
+        Args:
+            player: The player who made the move (PLAYER_1 or PLAYER_2)
+            action: The column where the piece was placed
+            prev_board: Board state before the move was made
+
+        Returns:
+            Shaped reward (small value to supplement terminal reward)
+        """
+        shaped_reward = 0.0
+        opponent = self.PLAYER_2 if player == self.PLAYER_1 else self.PLAYER_1
+
+        # Create temporary game to analyze previous state
+        prev_game = ConnectFour()
+        prev_game.board = prev_board.copy()
+
+        # Get threats before and after the move
+        prev_player_threats = prev_game.find_threats(player)
+        prev_opponent_threats = prev_game.find_threats(opponent)
+
+        current_player_threats = self.find_threats(player)
+        current_opponent_threats = self.find_threats(opponent)
+
+        # Reward for creating new immediate threats (3-in-row playable)
+        new_immediate_threats = len(current_player_threats['three_playable']) - len(prev_player_threats['three_playable'])
+        if new_immediate_threats > 0:
+            shaped_reward += 0.08 * new_immediate_threats
+
+        # Reward for blocking opponent immediate threats
+        blocked_immediate = len(prev_opponent_threats['three_playable']) - len(current_opponent_threats['three_playable'])
+        if blocked_immediate > 0:
+            shaped_reward += 0.06 * blocked_immediate
+
+        # Reward for creating future threats (3-in-row not immediately playable)
+        new_future_threats = len(current_player_threats['three_future']) - len(prev_player_threats['three_future'])
+        if new_future_threats > 0:
+            shaped_reward += 0.04 * new_future_threats
+
+        # Reward for blocking opponent future threats
+        blocked_future = len(prev_opponent_threats['three_future']) - len(current_opponent_threats['three_future'])
+        if blocked_future > 0:
+            shaped_reward += 0.03 * blocked_future
+
+        # Reward for creating 2-in-row setups
+        new_setups = current_player_threats['two_setups'] - prev_player_threats['two_setups']
+        if new_setups > 0:
+            shaped_reward += 0.02 * new_setups
+
+        # Center column bonus
+        if action == 3:  # Center column
+            shaped_reward += 0.01
+
+        return shaped_reward
+
     def clone(self) -> 'ConnectFour':
         """Create a deep copy of the game."""
         new_game = ConnectFour()

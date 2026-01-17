@@ -52,6 +52,9 @@ def train_self_play(
             legal_actions = game.get_legal_actions()
             current_player = game.current_player
 
+            # Store board state before move for reward shaping
+            prev_board = state.copy()
+
             # Choose action (pass current_player for correct state preprocessing)
             action = agent.choose_action(state, legal_actions, training=True, current_player=current_player)
 
@@ -64,7 +67,8 @@ def train_self_play(
                 'action': action,
                 'player': current_player,
                 'next_state': next_state,
-                'done': done
+                'done': done,
+                'prev_board': prev_board
             })
 
         # Game finished - assign rewards
@@ -73,24 +77,35 @@ def train_self_play(
         for i, transition in enumerate(episode_transitions):
             player = transition['player']
 
+            # Compute terminal reward
             if game.winner == player:
-                reward = 1.0
+                terminal_reward = 1.0
                 if player == ConnectFour.PLAYER_1:
                     p1_wins += 1
                 else:
                     p2_wins += 1
             elif game.winner is None:
-                reward = 0.0
+                terminal_reward = 0.0
                 if i == len(episode_transitions) - 1:
                     draws += 1
             else:
-                reward = -1.0
+                terminal_reward = -1.0
+
+            # Compute shaped reward based on threats and positioning
+            temp_game = ConnectFour()
+            temp_game.board = transition['next_state'].copy()
+            shaped_reward = temp_game.compute_shaped_reward(
+                player, transition['action'], transition['prev_board']
+            )
+
+            # Combine terminal and shaped rewards
+            total_reward = terminal_reward + shaped_reward
 
             # Store in replay buffer (include player for correct perspective during training)
             agent.store_transition(
                 transition['state'],
                 transition['action'],
-                reward,
+                total_reward,
                 transition['next_state'],
                 transition['done'],
                 transition['player']
